@@ -61,7 +61,7 @@ expiry_timestamp=$(($current_timestamp + 157680000)) # ~5 anos
 anon_payload_json=$(cat <<EOF
 {
   "role": "anon",
-  "iss": "supabase-${INSTANCE_ID}",
+  "iss": "supabase",
   "iat": ${current_timestamp},
   "exp": ${expiry_timestamp}
 }
@@ -74,7 +74,7 @@ export ANON_KEY="${jwt_header_b64}.${anon_payload_b64}.${anon_signature}"
 service_payload_json=$(cat <<EOF
 {
   "role": "service_role",
-  "iss": "supabase-${INSTANCE_ID}",
+  "iss": "supabase",
   "iat": ${current_timestamp},
   "exp": ${expiry_timestamp}
 }
@@ -220,3 +220,4 @@ echo "Caso utilize Firewall libere o acesso às Portas Kong ${KONG_HTTPS_PORT} -
 echo "Para ver os logs: docker compose -f ${DOCKER_COMPOSE_FILE} --env-file ${ENV_FILE} logs -f"
 echo "Para parar: docker compose -f ${DOCKER_COMPOSE_FILE} --env-file ${ENV_FILE} down"
 echo "===================================================================="
+
