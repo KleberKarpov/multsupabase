@@ -1,20 +1,6 @@
-#!/bin/bash
+!/bin/bash
 set -e # Sai imediatamente se um comando falhar
 # set -x # Descomente para imprimir cada comando antes de executá-lo (ótimo para depuração)
-
-# --- Funções Auxiliares para JWT ---
-# Função para codificar para Base64URL (remove padding, substitui +/ por -_, remove newlines)
-base64url_encode() {
-  echo -n "$1" | openssl base64 -e -A | sed 's/=//g; y!+/!-_!'
-}
-
-# Função para assinar dados com HMAC-SHA256 usando uma chave e codificar o resultado em Base64URL
-hmac_sha256_sign() {
-  local dataToSign="$1"
-  local secretKey="$2"
-  echo -n "$dataToSign" | openssl dgst -sha256 -hmac "$secretKey" -binary | base64url_encode
-}
-# --- Fim das Funções Auxiliares ---
 
 # --- Processamento de Argumentos ---
 if [ -z "$1" ]; then
@@ -27,13 +13,23 @@ fi
 INSTANCE_ID=$1
 export INSTANCE_ID # Exportar para envsubst e para o ambiente dos subcomandos
 
+# Diretório do script atual
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON_JWT_SCRIPT="${SCRIPT_DIR}/generate_jwt.py"
+
+# Verifica se o script Python existe
+if [ ! -f "${PYTHON_JWT_SCRIPT}" ]; then
+  echo "ERRO: O script generate_jwt.py não foi encontrado em ${SCRIPT_DIR}"
+  echo "Certifique-se de que generate_jwt.py está no mesmo diretório que generate.bash."
+  exit 1
+fi
+
 # Processa o segundo argumento para o nome do host base
 # Se não for fornecido, usa um valor padrão.
 DEFAULT_HOST_BASE="supabase.seudominio.com" # AJUSTE ESTE VALOR PADRÃO SE NECESSÁRIO
 HOST_BASE=${2:-$DEFAULT_HOST_BASE}
 
 if [ -z "$HOST_BASE" ]; then
-    # Esta condição só seria atingida se DEFAULT_HOST_BASE também fosse vazio e $2 não fosse fornecido.
     echo "ERRO: O nome do host base não foi fornecido e não há padrão configurado."
     echo "Uso: $0 <nome_da_instancia> <nome_do_host_base>"
     exit 1
@@ -49,40 +45,25 @@ echo "Gerando POSTGRES_PASSWORD..."
 export POSTGRES_PASSWORD=$(openssl rand -hex 16)
 echo "POSTGRES_PASSWORD gerado."
 
-echo "Gerando JWT_SECRET, ANON_KEY, SERVICE_ROLE_KEY para ${INSTANCE_ID}..."
+echo "Gerando JWT_SECRET..."
 export JWT_SECRET=$(openssl rand -base64 32)
+echo "JWT_SECRET gerado: ${JWT_SECRET}"
 
-jwt_header_json='{"alg":"HS256","typ":"JWT"}'
-jwt_header_b64=$(base64url_encode "$jwt_header_json")
+echo "Gerando ANON_KEY usando script Python..."
+export ANON_KEY=$(python3 "${PYTHON_JWT_SCRIPT}" "${JWT_SECRET}" "anon" "supabase")
+if [ -z "${ANON_KEY}" ]; then
+    echo "ERRO: Falha ao gerar ANON_KEY com o script Python."
+    exit 1
+fi
+echo "ANON_KEY gerado."
 
-current_timestamp=$(date +%s)
-expiry_timestamp=$(($current_timestamp + 157680000)) # ~5 anos
-
-anon_payload_json=$(cat <<EOF
-{
-  "role": "anon",
-  "iss": "supabase",
-  "iat": ${current_timestamp},
-  "exp": ${expiry_timestamp}
-}
-EOF
-)
-anon_payload_b64=$(echo -n "$anon_payload_json" | tr -d '\n\t ' | base64url_encode)
-anon_signature=$(hmac_sha256_sign "${jwt_header_b64}.${anon_payload_b64}" "$JWT_SECRET")
-export ANON_KEY="${jwt_header_b64}.${anon_payload_b64}.${anon_signature}"
-
-service_payload_json=$(cat <<EOF
-{
-  "role": "service_role",
-  "iss": "supabase",
-  "iat": ${current_timestamp},
-  "exp": ${expiry_timestamp}
-}
-EOF
-)
-service_payload_b64=$(echo -n "$service_payload_json" | tr -d '\n\t ' | base64url_encode)
-service_signature=$(hmac_sha256_sign "${jwt_header_b64}.${service_payload_b64}" "$JWT_SECRET")
-export SERVICE_ROLE_KEY="${jwt_header_b64}.${service_payload_b64}.${service_signature}"
+echo "Gerando SERVICE_ROLE_KEY usando script Python..."
+export SERVICE_ROLE_KEY=$(python3 "${PYTHON_JWT_SCRIPT}" "${JWT_SECRET}" "service_role" "supabase")
+if [ -z "${SERVICE_ROLE_KEY}" ]; then
+    echo "ERRO: Falha ao gerar SERVICE_ROLE_KEY com o script Python."
+    exit 1
+fi
+echo "SERVICE_ROLE_KEY gerado."
 
 echo "JWT_SECRET, ANON_KEY, e SERVICE_ROLE_KEY gerados."
 # --- Fim da Geração de Segredos ---
@@ -173,6 +154,15 @@ mkdir -p "${VOLUMES_DIR_INSTANCE}/db/init"
 mkdir -p "${VOLUMES_DIR_INSTANCE}/api"
 echo "Diretórios de volumes criados."
 
+# --- Criação de Diretórios de Volumes Específicos da Instância ---
+VOLUMES_DIR_INSTANCE="volumes-${INSTANCE_ID}"
+echo "Criando diretórios de volumes em ${VOLUMES_DIR_INSTANCE}..."
+mkdir -p "${VOLUMES_DIR_INSTANCE}/functions"
+mkdir -p "${VOLUMES_DIR_INSTANCE}/logs"
+mkdir -p "${VOLUMES_DIR_INSTANCE}/db/init"
+mkdir -p "${VOLUMES_DIR_INSTANCE}/api"
+echo "Diretórios de volumes criados."
+
 # --- Cópia e Preparação de Arquivos de Volume ---
 if [ -d "volumes/db/" ]; then
   echo "Copiando conteúdo de volumes/db/ para ${VOLUMES_DIR_INSTANCE}/db/..."
@@ -206,7 +196,7 @@ echo "  Host Base Utilizado: ${HOST_BASE}"
 echo "  URL da API Pública: ${SUPABASE_PUBLIC_URL}"
 echo "  URL do Studio: ${SITE_URL}"
 echo "  Chave Anon (ANON_KEY): ${ANON_KEY}"
-echo "  Chave Service Role (SERVICE_ROLE_KEY): (Verifique ${ENV_FILE})"
+echo "  Chave Service Role (SERVICE_ROLE_KEY): (Verifique ${ENV_FILE} ou o output do script Python)"
 echo "  Senha do Postgres: ${POSTGRES_PASSWORD}"
 echo "  Usuário do Dashboard Studio: ${DASHBOARD_USERNAME}"
 echo "  Senha do Dashboard Studio: ${DASHBOARD_PASSWORD}"
