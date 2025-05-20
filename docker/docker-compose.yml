@@ -31,10 +31,10 @@ services:
       AUTH_JWT_SECRET: ${JWT_SECRET}
       LOGFLARE_API_KEY: ${LOGFLARE_API_KEY}
       LOGFLARE_URL: http://analytics:4000
-      NEXT_PUBLIC_ENABLE_LOGS: true
+      NEXT_PUBLIC_ENABLE_LOGS: "true"
       NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
-    #ports:
-    #  - "${STUDIO_PORT}:3000"
+    ports:
+      - "${STUDIO_PORT}:3000"
 
   kong:
     container_name: supabase-kong-${INSTANCE_ID}
@@ -48,6 +48,15 @@ services:
     depends_on:
       analytics:
         condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.supabase.rule=Host(`supabase.aivw.me`)"
+      - "traefik.http.routers.supabase.entrypoints=websecure"
+      - "traefik.http.routers.supabase.tls=true"
+      - "traefik.http.routers.supabase.tls.certresolver=letsencryptresolver"
+      - "traefik.http.services.supabase.loadbalancer.server.port=${KONG_HTTPS_PORT}"
+      - "traefik.http.middlewares.supabase-headers.headers.customrequestheaders.Host=supabase.aivw.me"
+      - "traefik.http.routers.supabase.middlewares=supabase-headers"
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
@@ -95,7 +104,7 @@ services:
       GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:${POSTGRES_PORT}/${POSTGRES_DB}
       GOTRUE_SITE_URL: ${SITE_URL}
       GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS}
-      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP}
+      GOTRUE_DISABLE_SIGNUP: "${DISABLE_SIGNUP}"
       GOTRUE_JWT_ADMIN_ROLES: service_role
       GOTRUE_JWT_AUD: authenticated
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
@@ -116,8 +125,8 @@ services:
       GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: ${MAILER_URLPATHS_EMAIL_CHANGE}
       GOTRUE_EXTERNAL_PHONE_ENABLED: ${ENABLE_PHONE_SIGNUP}
       GOTRUE_SMS_AUTOCONFIRM: ${ENABLE_PHONE_AUTOCONFIRM}
-    #ports:
-    #  - "${AUTH_PORT}:9999"
+    ports:
+      - "${AUTH_PORT}:9999"
 
   rest:
     container_name: supabase-rest-${INSTANCE_ID}
@@ -136,8 +145,8 @@ services:
       PGRST_DB_USE_LEGACY_GUCS: "false"
       PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
       PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY}
-   # ports:
-   #   - "${REST_PORT}:3000"
+    ports:
+      - "${REST_PORT}:3000"
 
   realtime:
     container_name: realtime-dev.supabase-realtime-${INSTANCE_ID}
@@ -179,9 +188,9 @@ services:
       DNS_NODES: "''"
       RLIMIT_NOFILE: "10000"
       APP_NAME: realtime
-      SEED_SELF_HOST: true
-    #ports:
-    #  - "${REALTIME_PORT}:4000"
+      SEED_SELF_HOST: "true"
+    ports:
+      - "${REALTIME_PORT}:4000"
 
   storage:
     container_name: supabase-storage-${INSTANCE_ID}
@@ -223,8 +232,8 @@ services:
       IMGPROXY_URL: http://imgproxy:5001
     volumes:
       - ./volumes-${INSTANCE_ID}/storage:/var/lib/storage:z
-    #ports:
-    #  - "${STORAGE_PORT}:5000"
+    ports:
+      - "${STORAGE_PORT}:5000"
 
   imgproxy:
     container_name: supabase-imgproxy-${INSTANCE_ID}
@@ -238,11 +247,11 @@ services:
       IMGPROXY_BIND: ":5001"
       IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
       IMGPROXY_USE_ETAG: "true"
-      IMGPROXY_ENABLE_WEBP_DETECTION: ${IMGPROXY_ENABLE_WEBP_DETECTION}
+      IMGPROXY_ENABLE_WEBP_DETECTION: "${IMGPROXY_ENABLE_WEBP_DETECTION}"
     volumes:
       - ./volumes-${INSTANCE_ID}/storage:/var/lib/storage:z
-    #ports:
-    #  - "${IMGPROXY_PORT}:5001"
+    ports:
+      - "${IMGPROXY_PORT}:5001"
 
   meta:
     container_name: supabase-meta-${INSTANCE_ID}
@@ -260,8 +269,8 @@ services:
       PG_META_DB_NAME: ${POSTGRES_DB}
       PG_META_DB_USER: supabase_admin
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
-    #ports:
-    #  - "${META_PORT}:8080"
+    ports:
+      - "${META_PORT}:8080"
 
   functions:
     container_name: supabase-edge-functions-${INSTANCE_ID}
@@ -275,7 +284,7 @@ services:
       SUPABASE_URL: http://kong:8000
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
-      SUPABASE_DB_URL: postgresql://postgres:${POSTGRES_PASSWORD}@$db:${POSTGRES_PORT}/${POSTGRES_DB}
+      SUPABASE_DB_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:${POSTGRES_PORT}/${POSTGRES_DB}
       VERIFY_JWT: "${FUNCTIONS_VERIFY_JWT}"
     volumes:
       - ./volumes-${INSTANCE_ID}/functions:/home/deno/functions:Z
@@ -306,15 +315,14 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_SCHEMA: _analytics
       LOGFLARE_API_KEY: ${LOGFLARE_API_KEY}
-      LOGFLARE_SINGLE_TENANT: true
-      LOGFLARE_SUPABASE_MODE: true
+      LOGFLARE_SINGLE_TENANT: "true"
+      LOGFLARE_SUPABASE_MODE: "true"
       LOGFLARE_MIN_CLUSTER_SIZE: 1
       POSTGRES_BACKEND_URL: postgresql://supabase_admin:${POSTGRES_PASSWORD}@db:${POSTGRES_PORT}/${POSTGRES_DB}
       POSTGRES_BACKEND_SCHEMA: _analytics
       LOGFLARE_FEATURE_FLAG_OVERRIDE: multibackend=true
     ports:
       - "${ANALYTICS_PORT}:4000"
-
 
   db:
     container_name: supabase-db-${INSTANCE_ID}
@@ -362,38 +370,37 @@ services:
       #- ./volumes-${INSTANCE_ID}/db/config:/etc/postgresql-custom
 
   vector:
-      container_name: supabase-vector-${INSTANCE_ID}
-      image: timberio/vector:0.28.1-alpine
-      healthcheck:
-        test:
-            [
-              "CMD",
-              "wget",
-              "--no-verbose",
-              "--tries=1",
-              "--spider",
-              "http://vector:9001/health"
-            ]
-        interval: 30s
-        timeout: 10s
-        retries: 5
-        start_period: 60s
-      volumes:
-        - ./volumes-${INSTANCE_ID}/logs/vector.yml:/etc/vector/vector.yml:ro
-        - /var/run/docker.sock:/var/run/docker.sock:ro
-      environment:
-        LOGFLARE_API_KEY: ${LOGFLARE_API_KEY}
-      command: [ "--config", "/etc/vector/vector.yml" ]
- # Update the DATABASE_URL if you are using an external Postgres database
-  supavisor:
+    container_name: supabase-vector-${INSTANCE_ID}
+    image: timberio/vector:0.28.1-alpine
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://vector:9001/health"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - ./volumes-${INSTANCE_ID}/logs/vector.yml:/etc/vector/vector.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      LOGFLARE_API_KEY: ${LOGFLARE_API_KEY}
+    command: [ "--config", "/etc/vector/vector.yml" ]
+
+  pooler:
     container_name: supabase-pooler-${INSTANCE_ID}
     image: supabase/supavisor:1.1.56
     restart: unless-stopped
     ports:
-      - ${POSTGRES_PORT}:5432
-      - ${POOLER_PROXY_PORT_TRANSACTION}:6543
+      - "${POOLER_PORT}:5432"
     volumes:
-      - ./volumes/pooler/pooler.exs:/etc/pooler/pooler.exs:ro
+      - ./volumes-${INSTANCE_ID}/pooler/pooler.exs:/etc/pooler/pooler.exs:ro
     healthcheck:
       test:
         [
@@ -419,7 +426,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       DATABASE_URL: ecto://supabase_admin:${POSTGRES_PASSWORD}@db:${POSTGRES_PORT}/_supabase
-      CLUSTER_POSTGRES: true
+      CLUSTER_POSTGRES: "true"
       SECRET_KEY_BASE: ${SECRET_KEY_BASE}
       VAULT_ENC_KEY: ${VAULT_ENC_KEY}
       API_JWT_SECRET: ${JWT_SECRET}
@@ -439,5 +446,3 @@ services:
 
 volumes:
   db-data-${INSTANCE_ID}:
-
-
